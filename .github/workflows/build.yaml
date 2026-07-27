@@ -169,7 +169,10 @@ jobs:
             New-Item -ItemType Directory -Force -Path $contribBin | Out-Null
         }
 
-        Get-ChildItem -Path "Plugins\Contrib" -Filter "*.dll" -Recurse | Where-Object { $_.FullName -notlike "*obj*" } | ForEach-Object {
+        $absContribBin = [System.IO.Path]::GetFullPath($contribBin)
+        Get-ChildItem -Path "Plugins\Contrib" -Filter "*.dll" -Recurse | Where-Object { 
+            $_.FullName -notlike "*obj*" -and $_.DirectoryName -ne $absContribBin 
+        } | ForEach-Object {
             Copy-Item $_.FullName -Destination $contribBin -Force
             Write-Host "Prepared for Installer: $($_.Name)"
         }

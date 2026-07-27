@@ -170,16 +170,32 @@ jobs:
       run: |
         iscc Installer\installer.iss
 
-    # 15. Сбор всех скомпилированных DLL плагинов в один каталог
+    # 15. Сбор абсолютно всех скомпилированных DLL плагинов из папок bin
     - name: Collect ALL Plugin DLLs
       shell: powershell
       run: |
         New-Item -ItemType Directory -Force -Path "All_Compiled_Plugins"
-        Get-ChildItem -Path . -Filter "*.dll" -Recurse | Where-Object { 
-            $_.FullName -like "*Release*" -and $_.FullName -notlike "*obj*" 
-        } | ForEach-Object {
-            Write-Host "Collecting plugin: $($_.Name)"
+
+        $searchDirs = @(
+            "Plugins\Contrib\bin",
+            "Plugins\Core\bin",
+            "OpenCredential\src\bin",
+            "Plugins\SDK"
+        )
+
+        foreach ($dir in $searchDirs) {
+            if (Test-Path $dir) {
+                Write-Host "Collecting DLLs from: $dir"
+                Get-ChildItem -Path $dir -Filter "*.dll" | ForEach-Object {
+                    Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
+                    Write-Host " -> Collected: $($_.Name)"
+                }
+            }
+        }
+
+        Get-ChildItem -Path "Plugins" -Filter "OpenCredential.Plugin.*.dll" -Recurse | Where-Object { $_.FullName -notlike "*obj*" } | ForEach-Object {
             Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
+            Write-Host " -> Collected plugin: $($_.Name)"
         }
 
     # 16. Загрузка готовых результатов в Артефакты GitHub

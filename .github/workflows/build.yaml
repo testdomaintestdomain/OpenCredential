@@ -12,13 +12,19 @@ jobs:
     runs-on: windows-2022
 
     steps:
-    # 1. Клонируем репозиторий
-    - name: Checkout repository
+    # 1. Клонируем репозиторий вместе со всеми внешними библиотеками и подмодулями
+    - name: Checkout repository & submodules
       uses: actions/checkout@v4
       with:
-        submodules: true
+        submodules: 'recursive'
+        fetch-depth: 0
 
-    # 2. Подготавливаем MSBuild и NuGet
+    # 2. Принудительно обновляем git submodules на случай, если какие-то библиотеки в них
+    - name: Init Git Submodules
+      run: |
+        git submodule update --init --recursive
+
+    # 3. Подготавливаем MSBuild и NuGet
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
@@ -28,23 +34,28 @@ jobs:
     - name: Install Inno Setup
       run: choco install innosetup --no-progress -y
 
-    # 3. Автоматически исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
-    - name: Patch Build-OpenCredential.ps1 with correct MSBuild Path
+    # 4. Исправляем C++ Platform Toolset с v145 на v143 (для Visual Studio 2022)
+    - name: Retarget C++ Projects (v145 -> v143)
       shell: powershell
       run: |
-        # Находим реальный путь к MSBuild.exe на сервере GitHub
+        Get-ChildItem -Path . -Filter "*.vcxproj" -Recurse | ForEach-Object {
+            Write-Host "Retargeting C++ Toolset in: $($_.FullName)"
+            (Get-Content $_.FullName) -replace '<PlatformToolset>v145</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' | Set-Content $_.FullName
+        }
+
+    # 5. Исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
+    - name: Patch Build-OpenCredential.ps1 MSBuild Path
+      shell: powershell
+      run: |
         $msbuild = (Get-Command msbuild.exe -ErrorAction SilentlyContinue).Source
         if (-not $msbuild) {
             $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
         }
         Write-Host "Found MSBuild at: $msbuild"
-
-        # Заменяем жестко зашитый путь в Build-OpenCredential.ps1 на найденный
         $scriptPath = ".\Build-OpenCredential.ps1"
         (Get-Content $scriptPath) -replace '\$msbuildPath = ".*"', "`$msbuildPath = '$msbuild'" | Set-Content $scriptPath
-        Write-Host "Successfully patched Build-OpenCredential.ps1"
 
-    # 4. Восстанавливаем пакеты NuGet
+    # 6. Восстанавливаем пакеты NuGet
     - name: Restore NuGet Packages for ALL solutions
       shell: powershell
       run: |
@@ -53,34 +64,34 @@ jobs:
             nuget restore $_.FullName
         }
 
-    # 5. Сборка ядра OpenCredential и основных плагинов
+    # 7. Сборка ядра OpenCredential и основных плагинов
     - name: Build Core Solution & Core Plugins
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildAll -Configuration Release
 
-    # 6. Сборка всех дополнительных плагинов (включая RADIUS Plugin)
+    # 8. Сборка всех дополнительных плагинов (включая RADIUS Plugin)
     - name: Build ALL Contrib Plugins
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildContribPlugins -Configuration Release
 
-    # 7. Дополнительная принудительная сборка всех независимых плагинов
+    # 9. Принудительная сборка оставшихся решений плагинов
     - name: Build any orphan Plugin SLN files
       shell: powershell
       run: |
         Get-ChildItem -Path "Plugins" -Filter "*.sln" -Recurse | ForEach-Object {
             Write-Host "Building plugin solution: $($_.FullName)"
-            msbuild $_.FullName /p:Configuration=Release /p:Platform="Any CPU" /m
+            msbuild $_.FullName /p:Configuration=Release /p:Platform="Any CPU" /p:PlatformToolset=v143 /m
         }
 
-    # 8. Сборка единого инсталлятора Windows (.exe)
+    # 10. Сборка инсталлятора
     - name: Compile Inno Setup Installer
       shell: cmd
       run: |
         iscc Installer\installer.iss
 
-    # 9. Сбор всех скомпилированных DLL плагинов в одну папку
+    # 11. Сбор всех готовых DLL плагинов в один каталог
     - name: Collect ALL Plugin DLLs
       shell: powershell
       run: |
@@ -92,7 +103,7 @@ jobs:
             Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
         }
 
-    # 10. Загрузка инсталлятора в Артефакты
+    # 12. Публикация готовых результатов в Artifacts
     - name: Upload Installer (.exe)
       uses: actions/upload-artifact@v4
       with:
@@ -101,7 +112,6 @@ jobs:
           Installer/*.exe
           Installer/Output/*.exe
 
-    # 11. Загрузка всех скомпилированных DLL плагинов
     - name: Upload ALL Plugins (.dll)
       uses: actions/upload-artifact@v4
       with:

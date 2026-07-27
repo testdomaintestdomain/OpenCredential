@@ -94,7 +94,7 @@ namespace OpenCredential.Plugin.RADIUS
         {
             m_logger.DebugFormat("AuthenticateUser({0})", properties.Id.ToString());
 
-            if (!(bool)Settings.Store.EnableAuth)
+            if (!(bool)Settings.Store.GetSetting("EnableAuth", true))
             {
                 m_logger.Debug("Authentication stage set on RADIUS plugin but authentication is not enabled in plugin settings.");
                 return new BooleanResult() { Success = false };
@@ -116,7 +116,7 @@ namespace OpenCredential.Plugin.RADIUS
                     Packet p = client.lastReceievedPacket;
 
                     // Check for session timeout
-                    if ((bool)Settings.Store.AllowSessionTimeout && p.containsAttribute(Packet.AttributeType.Session_Timeout))
+                    if ((bool)Settings.Store.GetSetting("AllowSessionTimeout", false) && p.containsAttribute(Packet.AttributeType.Session_Timeout))
                     {   
                         int seconds = client.lastReceievedPacket.getFirstIntAttribute(Packet.AttributeType.Session_Timeout);
                         session.SetSessionTimeout(seconds, SessionTimeoutCallback);
@@ -129,7 +129,7 @@ namespace OpenCredential.Plugin.RADIUS
 
                     if(p.containsAttribute(Packet.AttributeType.Vendor_Specific)){
                         foreach(byte[] val in p.getByteArrayAttributes(Packet.AttributeType.Vendor_Specific)){
-                            if ((bool)Settings.Store.WisprSessionTerminate && Packet.VSA_vendorID(val) == (int)Packet.VSA_WISPr.Vendor_ID 
+                            if ((bool)Settings.Store.GetSetting("WisprSessionTerminate", false) && Packet.VSA_vendorID(val) == (int)Packet.VSA_WISPr.Vendor_ID 
                                 && Packet.VSA_VendorType(val) == (int)Packet.VSA_WISPr.WISPr_Session_Terminate_Time)
                             {
                                 try
@@ -153,7 +153,7 @@ namespace OpenCredential.Plugin.RADIUS
                     }
 
                     // Check for interim-update
-                    if ((bool)Settings.Store.SendInterimUpdates)
+                    if ((bool)Settings.Store.GetSetting("SendInterimUpdates", false))
                     {
                         int seconds = 0;
 
@@ -162,9 +162,9 @@ namespace OpenCredential.Plugin.RADIUS
                             seconds = client.lastReceievedPacket.getFirstIntAttribute(Packet.AttributeType.Acct_Interim_Interval);
                         }
 
-                        if ((bool)Settings.Store.ForceInterimUpdates)
+                        if ((bool)Settings.Store.GetSetting("ForceInterimUpdates", false))
                         {
-                            int forceTime = (int)Settings.Store.InterimUpdateTime;
+                            int forceTime = (int)Settings.Store.GetSetting("InterimUpdateTime", 900);
                             if (forceTime > 0)
                                 seconds = forceTime;
                         }
@@ -226,13 +226,13 @@ namespace OpenCredential.Plugin.RADIUS
         {
             m_logger.Debug("RADIUS Plugin Authorization");
 
-            if (!(bool)Settings.Store.EnableAuthz)
+            if (!(bool)Settings.Store.GetSetting("EnableAuthz", true))
             {
                 m_logger.Debug("RADIUS Authorization is not enabled.");
                 return new BooleanResult() { Success = true };
             }
 
-            bool requireSuccess = (bool)Settings.Store.AuthzRequireSuccess;
+            bool requireSuccess = (bool)Settings.Store.GetSetting("AuthzRequireSuccess", true);
             if (requireSuccess && !WeAuthedThisUser(properties))
             {
                 m_logger.InfoFormat("Deny because RADIUS auth failed or did not run, and configured to require RADIUS auth success.");
@@ -265,7 +265,7 @@ namespace OpenCredential.Plugin.RADIUS
         {
             m_logger.Debug("RADIUS Plugin Gateway");
 
-            if (!(bool)Settings.Store.EnableGateway)
+            if (!(bool)Settings.Store.GetSetting("EnableGateway", true))
             {
                 m_logger.Debug("RADIUS Gateway is not enabled.");
                 return new BooleanResult() { Success = true };
@@ -274,7 +274,7 @@ namespace OpenCredential.Plugin.RADIUS
             try
             {
                 UserInformation userInfo = properties.GetTrackedSingle<UserInformation>();
-                string localGroup = Settings.Store.GatewayLocalGroup;
+                string localGroup = (string)Settings.Store.GetSetting("GatewayLocalGroup", "Users");
                 if (!string.IsNullOrEmpty(localGroup))
                 {
                     m_logger.InfoFormat("Adding user {0} to local group {1} (RADIUS gateway)", userInfo.Username, localGroup);
@@ -305,7 +305,7 @@ namespace OpenCredential.Plugin.RADIUS
                 return;
             }
 
-            if (!(bool)Settings.Store.EnableAcct)
+            if (!(bool)Settings.Store.GetSetting("EnableAcct", false))
             {
                 m_logger.Debug("Session Change stage set on RADIUS plugin but accounting is not enabled in plugin settings.");
                 return;
@@ -319,7 +319,7 @@ namespace OpenCredential.Plugin.RADIUS
                 return;
             }
 
-            if ((bool)Settings.Store.UseModifiedName)
+            if ((bool)Settings.Store.GetSetting("UseModifiedName", false))
                 username = ui.Username;
             else
                 username = ui.OriginalUsername;
@@ -332,7 +332,7 @@ namespace OpenCredential.Plugin.RADIUS
                 {
                     if (!m_sessionManager.Keys.Contains(properties.Id))
                     {
-                        if(!(bool)Settings.Store.AcctingForAllUsers){
+                        if(!(bool)Settings.Store.GetSetting("AcctingForAllUsers", false)){
                             return;
                         }
 
@@ -340,9 +340,9 @@ namespace OpenCredential.Plugin.RADIUS
                         session = new Session(properties.Id, username, client);
                         m_sessionManager.Add(properties.Id, session);
                             
-                        if ((bool)Settings.Store.SendInterimUpdates && (bool)Settings.Store.ForceInterimUpdates)
+                        if ((bool)Settings.Store.GetSetting("SendInterimUpdates", false) && (bool)Settings.Store.GetSetting("ForceInterimUpdates", false))
                         {
-                            int interval = (int)Settings.Store.InterimUpdateTime;
+                            int interval = (int)Settings.Store.GetSetting("InterimUpdateTime", 900);
                             session.SetInterimUpdate(interval, InterimUpdatesCallback);
                         }
                     }
@@ -431,28 +431,38 @@ namespace OpenCredential.Plugin.RADIUS
 
         private RADIUSClient GetClient(string sessionId = null)
         {
-            string[] servers = Regex.Split(Settings.Store.Server.Trim(), @"\s+");
-            int authport = Settings.Store.AuthPort;
-            int acctport = Settings.Store.AcctPort;
-            string sharedKey = Settings.Store.GetEncryptedSetting("SharedSecret");
-            int timeout = Settings.Store.Timeout;
-            int retry = Settings.Store.Retry;
+            string[] servers = Regex.Split(((string)Settings.Store.GetSetting("Server", "")).Trim(), @"\s+");
+            int authport = (int)Settings.Store.GetSetting("AuthPort", 1812);
+            int acctport = (int)Settings.Store.GetSetting("AcctPort", 1813);
+            
+            string sharedKey;
+            try
+            {
+                sharedKey = Settings.Store.GetEncryptedSetting("SharedSecret");
+            }
+            catch (KeyNotFoundException)
+            {
+                sharedKey = "";
+            }
+
+            int timeout = (int)Settings.Store.GetSetting("Timeout", 2500);
+            int retry = (int)Settings.Store.GetSetting("Retry", 3);
 
             byte[] ipAddr = null;
             string nasIdentifier = null;
             string calledStationId = null;
             
-            if((bool)Settings.Store.SendNASIPAddress)
+            if((bool)Settings.Store.GetSetting("SendNASIPAddress", true))
                 ipAddr = getNetworkInfo().Item1;
 
-            if((bool)Settings.Store.SendNASIdentifier){
-                nasIdentifier = Settings.Store.NASIdentifier;
+            if((bool)Settings.Store.GetSetting("SendNASIdentifier", true)){
+                nasIdentifier = (string)Settings.Store.GetSetting("NASIdentifier", "%computername");
                 nasIdentifier = nasIdentifier.Contains('%') ? replaceSymbols(nasIdentifier) : nasIdentifier;
             }
 
-            if ((bool)Settings.Store.SendCalledStationID)
+            if ((bool)Settings.Store.GetSetting("SendCalledStationID", false))
             {
-                calledStationId = (String)Settings.Store.CalledStationID;
+                calledStationId = (string)Settings.Store.GetSetting("CalledStationID", "%macaddr");
                 calledStationId = calledStationId.Contains('%') ? replaceSymbols(calledStationId) : calledStationId;
             }
  
@@ -470,7 +480,7 @@ namespace OpenCredential.Plugin.RADIUS
         
         private Tuple<byte[], string> getNetworkInfo()
         {
-            string ipAddressRegex = Settings.Store.IPSuggestion;
+            string ipAddressRegex = (string)Settings.Store.GetSetting("IPSuggestion", "");
            
             byte[] ipAddr = null;
             string macAddr = null;

@@ -5,20 +5,20 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Ручной запуск из веб-интерфейса GitHub
+  workflow_dispatch:
 
 jobs:
   build-all:
     runs-on: windows-2022
 
     steps:
-    # 1. Клонируем репозиторий вместе со всеми подмодулями
+    # 1. Клонируем репозиторий
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         submodules: true
 
-    # 2. Подготавливаем окружение Visual Studio 2022 и MSBuild
+    # 2. Подготавливаем MSBuild и NuGet
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
@@ -28,7 +28,23 @@ jobs:
     - name: Install Inno Setup
       run: choco install innosetup --no-progress -y
 
-    # 3. Находим и восстанавливаем NuGet-пакеты для ВСЕХ решений (.sln) в проекте
+    # 3. Автоматически исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
+    - name: Patch Build-OpenCredential.ps1 with correct MSBuild Path
+      shell: powershell
+      run: |
+        # Находим реальный путь к MSBuild.exe на сервере GitHub
+        $msbuild = (Get-Command msbuild.exe -ErrorAction SilentlyContinue).Source
+        if (-not $msbuild) {
+            $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+        }
+        Write-Host "Found MSBuild at: $msbuild"
+
+        # Заменяем жестко зашитый путь в Build-OpenCredential.ps1 на найденный
+        $scriptPath = ".\Build-OpenCredential.ps1"
+        (Get-Content $scriptPath) -replace '\$msbuildPath = ".*"', "`$msbuildPath = '$msbuild'" | Set-Content $scriptPath
+        Write-Host "Successfully patched Build-OpenCredential.ps1"
+
+    # 4. Восстанавливаем пакеты NuGet
     - name: Restore NuGet Packages for ALL solutions
       shell: powershell
       run: |
@@ -37,19 +53,19 @@ jobs:
             nuget restore $_.FullName
         }
 
-    # 4. Сборка ядра OpenCredential и всех основных (Core) плагинов
+    # 5. Сборка ядра OpenCredential и основных плагинов
     - name: Build Core Solution & Core Plugins
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildAll -Configuration Release
 
-    # 5. Сборка ВСЕХ дополнительных (Contrib) плагинов (RADIUS, Database, etc.)
+    # 6. Сборка всех дополнительных плагинов (включая RADIUS Plugin)
     - name: Build ALL Contrib Plugins
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildContribPlugins -Configuration Release
 
-    # 6. Дополнительная принудительная сборка любых независимых решений плагинов
+    # 7. Дополнительная принудительная сборка всех независимых плагинов
     - name: Build any orphan Plugin SLN files
       shell: powershell
       run: |
@@ -58,13 +74,13 @@ jobs:
             msbuild $_.FullName /p:Configuration=Release /p:Platform="Any CPU" /m
         }
 
-    # 7. Сборка единого инсталлятора Windows (.exe)
+    # 8. Сборка единого инсталлятора Windows (.exe)
     - name: Compile Inno Setup Installer
       shell: cmd
       run: |
         iscc Installer\installer.iss
 
-    # 8. Сбор всех скомпилированных DLL плагинов в отдельную папку для удобного скачивания
+    # 9. Сбор всех скомпилированных DLL плагинов в одну папку
     - name: Collect ALL Plugin DLLs
       shell: powershell
       run: |
@@ -76,7 +92,7 @@ jobs:
             Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
         }
 
-    # 9. Загрузка готовго инсталлятора
+    # 10. Загрузка инсталлятора в Артефакты
     - name: Upload Installer (.exe)
       uses: actions/upload-artifact@v4
       with:
@@ -85,7 +101,7 @@ jobs:
           Installer/*.exe
           Installer/Output/*.exe
 
-    # 10. Загрузка ВСЕХ скомпилированных плагинов в одном архиве
+    # 11. Загрузка всех скомпилированных DLL плагинов
     - name: Upload ALL Plugins (.dll)
       uses: actions/upload-artifact@v4
       with:

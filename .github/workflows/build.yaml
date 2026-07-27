@@ -104,38 +104,60 @@ jobs:
             nuget restore $_.FullName
         }
 
-    # 9. Сначала компилируем ядро OpenCredential
+    # 9. Сначала компилируем ядро OpenCredential (генерация файлов SDK)
     - name: Build Core Solution
       shell: powershell
       run: |
         msbuild OpenCredential\src\OpenCredential-1.0.0.0.sln /p:Configuration=Release /p:Platform=x64 /m
         msbuild OpenCredential\src\OpenCredential-1.0.0.0.sln /p:Configuration=Release /p:Platform=Win32 /m
 
-    # 10. Синхронизируем собранные SDK библиотеки во все папки SDK плагинов
-    - name: Sync SDK Assemblies for all Plugins
+    # 10. Распространяем скомпилированные библиотеки SDK во ВСЕ локальные папки плагинов
+    - name: Sync SDK Assemblies across all plugin directories
       shell: powershell
       run: |
         $sourceBins = "OpenCredential\src\bin"
-        $sdkTargets = @("Plugins\SDK", "Plugins\Core\SDK", "Plugins\Contrib\SDK")
+        $sdkDir = "Plugins\SDK"
+        if (-not (Test-Path $sdkDir)) { New-Item -ItemType Directory -Force -Path $sdkDir | Out-Null }
 
-        foreach ($target in $sdkTargets) {
-            if (-not (Test-Path $target)) {
-                New-Item -ItemType Directory -Force -Path $target | Out-Null
-            }
-            Get-ChildItem -Path $sourceBins -Filter "*.dll" | ForEach-Object {
-                Copy-Item $_.FullName -Destination $target -Force
-                Write-Host "Synced $($_.Name) -> $target"
-            }
+        # Копируем бинарники ядра в главный Plugins\SDK
+        Get-ChildItem -Path $sourceBins -Filter "*.dll" | ForEach-Object {
+            Copy-Item $_.FullName -Destination $sdkDir -Force
         }
 
-    # 11. Теперь собираем все Core плагины и Contrib плагины (включая RADIUS)
+        # Также копируем SDK бинарники прямо в каждую папку, где лежит хотя бы один .csproj
+        Get-ChildItem -Path "Plugins" -Filter "*.csproj" -Recurse | ForEach-Object {
+            $projDir = $_.DirectoryName
+            Get-ChildItem -Path $sdkDir -Filter "*.dll" | ForEach-Object {
+                Copy-Item $_.FullName -Destination $projDir -Force
+            }
+        }
+        Write-Host "Successfully synced SDK DLLs into all plugin directories."
+
+    # 11. Прописываем АБСОЛЮТНЫЙ путь к SDK во всех .csproj файлах
+    - name: Fix HintPaths with Absolute SDK Path
+      shell: powershell
+      run: |
+        $absSdkPath = Join-Path (Get-Location).Path "Plugins\SDK"
+        Write-Host "Absolute SDK path: $absSdkPath"
+
+        Get-ChildItem -Path "Plugins" -Filter "*.csproj" -Recurse | ForEach-Object {
+            Write-Host "Updating HintPaths in: $($_.FullName)"
+            $content = Get-Content $_.FullName
+            $updated = $content -replace '<HintPath>.*?(OpenCredential|pGina)\.Abstractions\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Abstractions.dll</HintPath>" `
+                                -replace '<HintPath>.*?(OpenCredential|pGina)\.Shared\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Shared.dll</HintPath>" `
+                                -replace '<HintPath>.*?(OpenCredential|pGina)\.Core\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Core.dll</HintPath>" `
+                                -replace '<HintPath>.*?Abstractions\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Abstractions.dll</HintPath>"
+            Set-Content -Path $_.FullName -Value $updated
+        }
+
+    # 12. Собираем все Core плагины и Contrib плагины (включая RADIUS)
     - name: Build Core and Contrib Plugins via Build-OpenCredential.ps1
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildAll -Configuration Release
         .\Build-OpenCredential.ps1 -Target BuildContribPlugins -Configuration Release
 
-    # 12. Принудительная дособираемость любых редких плагинов
+    # 13. Дополнительная принудительная сборка оставшихся решений плагинов
     - name: Build remaining Plugin SLN files
       shell: powershell
       run: |
@@ -144,13 +166,13 @@ jobs:
             msbuild $_.FullName /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8 /p:PlatformToolset=v143 /m
         }
 
-    # 13. Сборка инсталлятора Inno Setup
+    # 14. Сборка инсталлятора Inno Setup
     - name: Compile Inno Setup Installer
       shell: cmd
       run: |
         iscc Installer\installer.iss
 
-    # 14. Сбор всех скомпилированных DLL плагинов в один каталог
+    # 15. Сбор всех скомпилированных DLL плагинов в один каталог
     - name: Collect ALL Plugin DLLs
       shell: powershell
       run: |
@@ -162,7 +184,7 @@ jobs:
             Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
         }
 
-    # 15. Загрузка готовых результатов в Артефакты
+    # 16. Загрузка готовых результатов в Артефакты GitHub
     - name: Upload Installer (.exe)
       uses: actions/upload-artifact@v4
       with:

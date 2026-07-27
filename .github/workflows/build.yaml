@@ -62,7 +62,20 @@ jobs:
             Write-Host "Copied log4net.dll to: $fullDir"
         }
 
-    # 5. Обновляем целевую версию .NET с v4.0 до v4.8 во всех C# проектах (.csproj)
+    # 5. Исправление старых зашитых путей к SDK в .csproj файлах плагинов
+    - name: Fix hardcoded SDK HintPaths in Plugin .csproj files
+      shell: powershell
+      run: |
+        Get-ChildItem -Path "Plugins" -Filter "*.csproj" -Recurse | ForEach-Object {
+            Write-Host "Fixing HintPaths in: $($_.FullName)"
+            $content = Get-Content $_.FullName
+            $updated = $content -replace '<HintPath>.*?(OpenCredential|pGina)\.Abstractions\.dll</HintPath>', '<HintPath>..\..\SDK\OpenCredential.Abstractions.dll</HintPath>' `
+                                -replace '<HintPath>.*?(OpenCredential|pGina)\.Shared\.dll</HintPath>', '<HintPath>..\..\SDK\OpenCredential.Shared.dll</HintPath>' `
+                                -replace '<HintPath>.*?(OpenCredential|pGina)\.Core\.dll</HintPath>', '<HintPath>..\..\SDK\OpenCredential.Core.dll</HintPath>'
+            Set-Content -Path $_.FullName -Value $updated
+        }
+
+    # 6. Обновляем целевую версию .NET с v4.0 до v4.8 во всех C# проектах
     - name: Retarget .NET Framework to v4.8 in all C# projects
       shell: powershell
       run: |
@@ -74,7 +87,7 @@ jobs:
             Set-Content -Path $_.FullName -Value $updated
         }
 
-    # 6. Исправляем C++ Platform Toolset с v145 на v143 (для Visual Studio 2022)
+    # 7. Исправляем C++ Platform Toolset с v145 на v143 (для Visual Studio 2022)
     - name: Retarget C++ Projects (v145 -> v143)
       shell: powershell
       run: |
@@ -83,7 +96,7 @@ jobs:
             (Get-Content $_.FullName) -replace '<PlatformToolset>v145</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' | Set-Content $_.FullName
         }
 
-    # 7. Исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
+    # 8. Исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
     - name: Patch Build-OpenCredential.ps1 MSBuild Path
       shell: powershell
       run: |
@@ -95,7 +108,7 @@ jobs:
         $scriptPath = ".\Build-OpenCredential.ps1"
         (Get-Content $scriptPath) -replace '\$msbuildPath = ".*"', "`$msbuildPath = '$msbuild'" | Set-Content $scriptPath
 
-    # 8. Восстанавливаем пакеты NuGet для всех решений
+    # 9. Восстанавливаем пакеты NuGet для всех решений
     - name: Restore NuGet Packages for ALL solutions
       shell: powershell
       run: |
@@ -104,19 +117,19 @@ jobs:
             nuget restore $_.FullName
         }
 
-    # 9. Сборка ядра OpenCredential и основных плагинов
+    # 10. СНАЧАЛА собираем ядро (чтобы сгенерировать библиотеки SDK в Plugins\SDK)
     - name: Build Core Solution & Core Plugins
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildAll -Configuration Release
 
-    # 10. Сборка всех дополнительных плагинов (включая RADIUS Plugin)
+    # 11. ЗАТЕМ собираем все дополнительные плагины (включая RADIUS Plugin)
     - name: Build ALL Contrib Plugins
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildContribPlugins -Configuration Release
 
-    # 11. Дополнительная принудительная сборка оставшихся плагинов
+    # 12. Принудительная сборка оставшихся плагинов
     - name: Build any orphan Plugin SLN files
       shell: powershell
       run: |
@@ -125,13 +138,13 @@ jobs:
             msbuild $_.FullName /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8 /p:PlatformToolset=v143 /m
         }
 
-    # 12. Сборка инсталлятора Inno Setup
+    # 13. Сборка инсталлятора Inno Setup
     - name: Compile Inno Setup Installer
       shell: cmd
       run: |
         iscc Installer\installer.iss
 
-    # 13. Сбор всех скомпилированных DLL плагинов в один каталог
+    # 14. Сбор всех скомпилированных DLL плагинов в один каталог
     - name: Collect ALL Plugin DLLs
       shell: powershell
       run: |
@@ -143,7 +156,7 @@ jobs:
             Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
         }
 
-    # 14. Публикация готовых результатов в Artifacts
+    # 15. Загрузка готовых результатов в Артефакты
     - name: Upload Installer (.exe)
       uses: actions/upload-artifact@v4
       with:

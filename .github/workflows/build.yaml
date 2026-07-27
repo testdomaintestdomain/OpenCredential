@@ -183,7 +183,8 @@ jobs:
             $newLines = @()
             foreach ($line in $lines) {
                 if ($line -like "*Plugins\Contrib\bin\*") {
-                    $newLines += $line.Replace(";", "")
+                    # Удаляем только начальный знак точки с запятой, если он присутствует
+                    $newLines += $line -replace '^\s*;', ''
                 } else {
                     $newLines += $line
                 }

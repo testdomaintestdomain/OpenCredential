@@ -62,20 +62,7 @@ jobs:
             Write-Host "Copied log4net.dll to: $fullDir"
         }
 
-    # 5. Исправление старых зашитых путей к SDK в .csproj файлах плагинов
-    - name: Fix hardcoded SDK HintPaths in Plugin .csproj files
-      shell: powershell
-      run: |
-        Get-ChildItem -Path "Plugins" -Filter "*.csproj" -Recurse | ForEach-Object {
-            Write-Host "Fixing HintPaths in: $($_.FullName)"
-            $content = Get-Content $_.FullName
-            $updated = $content -replace '<HintPath>.*?(OpenCredential|pGina)\.Abstractions\.dll</HintPath>', '<HintPath>..\..\SDK\OpenCredential.Abstractions.dll</HintPath>' `
-                                -replace '<HintPath>.*?(OpenCredential|pGina)\.Shared\.dll</HintPath>', '<HintPath>..\..\SDK\OpenCredential.Shared.dll</HintPath>' `
-                                -replace '<HintPath>.*?(OpenCredential|pGina)\.Core\.dll</HintPath>', '<HintPath>..\..\SDK\OpenCredential.Core.dll</HintPath>'
-            Set-Content -Path $_.FullName -Value $updated
-        }
-
-    # 6. Обновляем целевую версию .NET с v4.0 до v4.8 во всех C# проектах
+    # 5. Обновляем целевую версию .NET с v4.0 до v4.8 во всех C# проектах
     - name: Retarget .NET Framework to v4.8 in all C# projects
       shell: powershell
       run: |
@@ -87,7 +74,7 @@ jobs:
             Set-Content -Path $_.FullName -Value $updated
         }
 
-    # 7. Исправляем C++ Platform Toolset с v145 на v143 (для Visual Studio 2022)
+    # 6. Исправляем C++ Platform Toolset с v145 на v143 (для Visual Studio 2022)
     - name: Retarget C++ Projects (v145 -> v143)
       shell: powershell
       run: |
@@ -96,7 +83,7 @@ jobs:
             (Get-Content $_.FullName) -replace '<PlatformToolset>v145</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' | Set-Content $_.FullName
         }
 
-    # 8. Исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
+    # 7. Исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
     - name: Patch Build-OpenCredential.ps1 MSBuild Path
       shell: powershell
       run: |
@@ -108,7 +95,7 @@ jobs:
         $scriptPath = ".\Build-OpenCredential.ps1"
         (Get-Content $scriptPath) -replace '\$msbuildPath = ".*"', "`$msbuildPath = '$msbuild'" | Set-Content $scriptPath
 
-    # 9. Восстанавливаем пакеты NuGet для всех решений
+    # 8. Восстанавливаем пакеты NuGet для всех решений
     - name: Restore NuGet Packages for ALL solutions
       shell: powershell
       run: |
@@ -117,20 +104,39 @@ jobs:
             nuget restore $_.FullName
         }
 
-    # 10. СНАЧАЛА собираем ядро (чтобы сгенерировать библиотеки SDK в Plugins\SDK)
-    - name: Build Core Solution & Core Plugins
+    # 9. Сначала компилируем ядро OpenCredential
+    - name: Build Core Solution
+      shell: powershell
+      run: |
+        msbuild OpenCredential\src\OpenCredential-1.0.0.0.sln /p:Configuration=Release /p:Platform=x64 /m
+        msbuild OpenCredential\src\OpenCredential-1.0.0.0.sln /p:Configuration=Release /p:Platform=Win32 /m
+
+    # 10. Синхронизируем собранные SDK библиотеки во все папки SDK плагинов
+    - name: Sync SDK Assemblies for all Plugins
+      shell: powershell
+      run: |
+        $sourceBins = "OpenCredential\src\bin"
+        $sdkTargets = @("Plugins\SDK", "Plugins\Core\SDK", "Plugins\Contrib\SDK")
+
+        foreach ($target in $sdkTargets) {
+            if (-not (Test-Path $target)) {
+                New-Item -ItemType Directory -Force -Path $target | Out-Null
+            }
+            Get-ChildItem -Path $sourceBins -Filter "*.dll" | ForEach-Object {
+                Copy-Item $_.FullName -Destination $target -Force
+                Write-Host "Synced $($_.Name) -> $target"
+            }
+        }
+
+    # 11. Теперь собираем все Core плагины и Contrib плагины (включая RADIUS)
+    - name: Build Core and Contrib Plugins via Build-OpenCredential.ps1
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildAll -Configuration Release
-
-    # 11. ЗАТЕМ собираем все дополнительные плагины (включая RADIUS Plugin)
-    - name: Build ALL Contrib Plugins
-      shell: powershell
-      run: |
         .\Build-OpenCredential.ps1 -Target BuildContribPlugins -Configuration Release
 
-    # 12. Принудительная сборка оставшихся плагинов
-    - name: Build any orphan Plugin SLN files
+    # 12. Принудительная дособираемость любых редких плагинов
+    - name: Build remaining Plugin SLN files
       shell: powershell
       run: |
         Get-ChildItem -Path "Plugins" -Filter "*.sln" -Recurse | ForEach-Object {

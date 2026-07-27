@@ -104,14 +104,14 @@ jobs:
             nuget restore $_.FullName
         }
 
-    # 9. Сначала компилируем ядро OpenCredential (генерация файлов SDK)
+    # 9. Сначала компилируем ядро OpenCredential
     - name: Build Core Solution
       shell: powershell
       run: |
         msbuild OpenCredential\src\OpenCredential-1.0.0.0.sln /p:Configuration=Release /p:Platform=x64 /m
         msbuild OpenCredential\src\OpenCredential-1.0.0.0.sln /p:Configuration=Release /p:Platform=Win32 /m
 
-    # 10. Распространяем скомпилированные библиотеки SDK во ВСЕ локальные папки плагинов
+    # 10. Распространяем скомпилированные библиотеки SDK во ВСЕ папки плагинов
     - name: Sync SDK Assemblies across all plugin directories
       shell: powershell
       run: |
@@ -119,21 +119,18 @@ jobs:
         $sdkDir = "Plugins\SDK"
         if (-not (Test-Path $sdkDir)) { New-Item -ItemType Directory -Force -Path $sdkDir | Out-Null }
 
-        # Копируем бинарники ядра в главный Plugins\SDK
         Get-ChildItem -Path $sourceBins -Filter "*.dll" | ForEach-Object {
             Copy-Item $_.FullName -Destination $sdkDir -Force
         }
 
-        # Также копируем SDK бинарники прямо в каждую папку, где лежит хотя бы один .csproj
         Get-ChildItem -Path "Plugins" -Filter "*.csproj" -Recurse | ForEach-Object {
             $projDir = $_.DirectoryName
             Get-ChildItem -Path $sdkDir -Filter "*.dll" | ForEach-Object {
                 Copy-Item $_.FullName -Destination $projDir -Force
             }
         }
-        Write-Host "Successfully synced SDK DLLs into all plugin directories."
 
-    # 11. Прописываем АБСОЛЮТНЫЙ путь к SDK во всех .csproj файлах
+    # 11. Прописываем АБСОЛЮТНЫЕ пути к SDK и log4net во ВСЕХ .csproj файлах
     - name: Fix HintPaths with Absolute SDK Path
       shell: powershell
       run: |
@@ -146,7 +143,8 @@ jobs:
             $updated = $content -replace '<HintPath>.*?(OpenCredential|pGina)\.Abstractions\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Abstractions.dll</HintPath>" `
                                 -replace '<HintPath>.*?(OpenCredential|pGina)\.Shared\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Shared.dll</HintPath>" `
                                 -replace '<HintPath>.*?(OpenCredential|pGina)\.Core\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Core.dll</HintPath>" `
-                                -replace '<HintPath>.*?Abstractions\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Abstractions.dll</HintPath>"
+                                -replace '<HintPath>.*?Abstractions\.dll</HintPath>', "<HintPath>$absSdkPath\OpenCredential.Abstractions.dll</HintPath>" `
+                                -replace '<HintPath>.*?log4net\.dll</HintPath>', "<HintPath>$absSdkPath\log4net.dll</HintPath>"
             Set-Content -Path $_.FullName -Value $updated
         }
 

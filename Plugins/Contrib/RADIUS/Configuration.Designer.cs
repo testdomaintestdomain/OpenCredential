@@ -61,21 +61,31 @@ namespace OpenCredential.Plugin.RADIUS
             this.forceInterimUpdTB = new System.Windows.Forms.TextBox();
             this.forceInterimUpdCB = new System.Windows.Forms.CheckBox();
             this.sendInterimUpdatesCB = new System.Windows.Forms.CheckBox();
+            this.acctingForAllUsersCB = new System.Windows.Forms.CheckBox();
             this.label10 = new System.Windows.Forms.Label();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.enableAuthCB = new System.Windows.Forms.CheckBox();
             this.enableAcctCB = new System.Windows.Forms.CheckBox();
             this.groupBox5 = new System.Windows.Forms.GroupBox();
-            this.acctingForAllUsersCB = new System.Windows.Forms.CheckBox();
+            
+            // New Controls Definition
+            this.enableAuthzCB = new System.Windows.Forms.CheckBox();
+            this.enableGatewayCB = new System.Windows.Forms.CheckBox();
+            this.authzGatewayGB = new System.Windows.Forms.GroupBox();
+            this.authzRequireSuccessCB = new System.Windows.Forms.CheckBox();
+            this.labelGatewayGroup = new System.Windows.Forms.Label();
+            this.gatewayLocalGroupTB = new System.Windows.Forms.TextBox();
+
             this.authGB.SuspendLayout();
             this.acctGB.SuspendLayout();
             this.groupBox1.SuspendLayout();
             this.groupBox5.SuspendLayout();
+            this.authzGatewayGB.SuspendLayout();
             this.SuspendLayout();
             // 
             // btnOk
             // 
-            this.btnOk.Location = new System.Drawing.Point(296, 471);
+            this.btnOk.Location = new System.Drawing.Point(296, 615);
             this.btnOk.Name = "btnOk";
             this.btnOk.Size = new System.Drawing.Size(75, 23);
             this.btnOk.TabIndex = 22;
@@ -85,7 +95,7 @@ namespace OpenCredential.Plugin.RADIUS
             // 
             // btnCancel
             // 
-            this.btnCancel.Location = new System.Drawing.Point(377, 471);
+            this.btnCancel.Location = new System.Drawing.Point(377, 615);
             this.btnCancel.Name = "btnCancel";
             this.btnCancel.Size = new System.Drawing.Size(75, 23);
             this.btnCancel.TabIndex = 23;
@@ -221,7 +231,7 @@ namespace OpenCredential.Plugin.RADIUS
             // label9
             // 
             this.label9.AutoSize = true;
-            this.label9.Location = new System.Drawing.Point(21, 445);
+            this.label9.Location = new System.Drawing.Point(21, 587);
             this.label9.Name = "label9";
             this.label9.Size = new System.Drawing.Size(117, 13);
             this.label9.TabIndex = 19;
@@ -229,7 +239,7 @@ namespace OpenCredential.Plugin.RADIUS
             // 
             // ipAddrSuggestionTB
             // 
-            this.ipAddrSuggestionTB.Location = new System.Drawing.Point(133, 442);
+            this.ipAddrSuggestionTB.Location = new System.Drawing.Point(133, 584);
             this.ipAddrSuggestionTB.Name = "ipAddrSuggestionTB";
             this.ipAddrSuggestionTB.Size = new System.Drawing.Size(98, 20);
             this.ipAddrSuggestionTB.TabIndex = 20;
@@ -237,7 +247,7 @@ namespace OpenCredential.Plugin.RADIUS
             // useModifiedNameCB
             // 
             this.useModifiedNameCB.AutoSize = true;
-            this.useModifiedNameCB.Location = new System.Drawing.Point(24, 414);
+            this.useModifiedNameCB.Location = new System.Drawing.Point(24, 560);
             this.useModifiedNameCB.Name = "useModifiedNameCB";
             this.useModifiedNameCB.Size = new System.Drawing.Size(207, 17);
             this.useModifiedNameCB.TabIndex = 18;
@@ -253,7 +263,7 @@ namespace OpenCredential.Plugin.RADIUS
             this.authGB.Controls.Add(this.sendNasIdentifierTB);
             this.authGB.Controls.Add(this.sendNasIdentifierCB);
             this.authGB.Controls.Add(this.sendNasIpAddrCB);
-            this.authGB.Location = new System.Drawing.Point(18, 171);
+            this.authGB.Location = new System.Drawing.Point(18, 196);
             this.authGB.Name = "authGB";
             this.authGB.Size = new System.Drawing.Size(434, 134);
             this.authGB.TabIndex = 15;
@@ -331,7 +341,7 @@ namespace OpenCredential.Plugin.RADIUS
             this.acctGB.Controls.Add(this.forceInterimUpdTB);
             this.acctGB.Controls.Add(this.forceInterimUpdCB);
             this.acctGB.Controls.Add(this.sendInterimUpdatesCB);
-            this.acctGB.Location = new System.Drawing.Point(18, 311);
+            this.acctGB.Location = new System.Drawing.Point(18, 336);
             this.acctGB.Name = "acctGB";
             this.acctGB.Size = new System.Drawing.Size(434, 97);
             this.acctGB.TabIndex = 16;
@@ -374,10 +384,20 @@ namespace OpenCredential.Plugin.RADIUS
             this.sendInterimUpdatesCB.Text = "Send Interim Updates";
             this.sendInterimUpdatesCB.UseVisualStyleBackColor = true;
             // 
+            // acctingForAllUsersCB
+            // 
+            this.acctingForAllUsersCB.AutoSize = true;
+            this.acctingForAllUsersCB.Location = new System.Drawing.Point(7, 17);
+            this.acctingForAllUsersCB.Name = "acctingForAllUsersCB";
+            this.acctingForAllUsersCB.Size = new System.Drawing.Size(226, 17);
+            this.acctingForAllUsersCB.TabIndex = 4;
+            this.acctingForAllUsersCB.Text = "Perform accounting for non-RADIUS users";
+            this.acctingForAllUsersCB.UseVisualStyleBackColor = true;
+            // 
             // label10
             // 
             this.label10.AutoSize = true;
-            this.label10.Location = new System.Drawing.Point(238, 445);
+            this.label10.Location = new System.Drawing.Point(238, 587);
             this.label10.Name = "label10";
             this.label10.Size = new System.Drawing.Size(89, 13);
             this.label10.TabIndex = 21;
@@ -400,7 +420,7 @@ namespace OpenCredential.Plugin.RADIUS
             this.groupBox1.Controls.Add(this.label7);
             this.groupBox1.Controls.Add(this.label6);
             this.groupBox1.Controls.Add(this.acctPortTB);
-            this.groupBox1.Location = new System.Drawing.Point(18, 65);
+            this.groupBox1.Location = new System.Drawing.Point(18, 90);
             this.groupBox1.Name = "groupBox1";
             this.groupBox1.Size = new System.Drawing.Size(434, 100);
             this.groupBox1.TabIndex = 24;
@@ -420,7 +440,7 @@ namespace OpenCredential.Plugin.RADIUS
             // enableAcctCB
             // 
             this.enableAcctCB.AutoSize = true;
-            this.enableAcctCB.Location = new System.Drawing.Point(223, 19);
+            this.enableAcctCB.Location = new System.Drawing.Point(223, 20);
             this.enableAcctCB.Name = "enableAcctCB";
             this.enableAcctCB.Size = new System.Drawing.Size(178, 17);
             this.enableAcctCB.TabIndex = 1;
@@ -431,33 +451,84 @@ namespace OpenCredential.Plugin.RADIUS
             // 
             this.groupBox5.Controls.Add(this.enableAcctCB);
             this.groupBox5.Controls.Add(this.enableAuthCB);
+            this.groupBox5.Controls.Add(this.enableAuthzCB);
+            this.groupBox5.Controls.Add(this.enableGatewayCB);
             this.groupBox5.Location = new System.Drawing.Point(18, 13);
             this.groupBox5.Name = "groupBox5";
-            this.groupBox5.Size = new System.Drawing.Size(434, 46);
+            this.groupBox5.Size = new System.Drawing.Size(434, 70);
             this.groupBox5.TabIndex = 25;
             this.groupBox5.TabStop = false;
             this.groupBox5.Text = "RADIUS Features";
             // 
-            // acctingForAllUsersCB
+            // enableAuthzCB
             // 
-            this.acctingForAllUsersCB.AutoSize = true;
-            this.acctingForAllUsersCB.Location = new System.Drawing.Point(7, 17);
-            this.acctingForAllUsersCB.Name = "acctingForAllUsersCB";
-            this.acctingForAllUsersCB.Size = new System.Drawing.Size(226, 17);
-            this.acctingForAllUsersCB.TabIndex = 4;
-            this.acctingForAllUsersCB.Text = "Perform accounting for non-RADIUS users";
-            this.acctingForAllUsersCB.UseVisualStyleBackColor = true;
+            this.enableAuthzCB.AutoSize = true;
+            this.enableAuthzCB.Location = new System.Drawing.Point(9, 44);
+            this.enableAuthzCB.Name = "enableAuthzCB";
+            this.enableAuthzCB.Size = new System.Drawing.Size(207, 17);
+            this.enableAuthzCB.TabIndex = 2;
+            this.enableAuthzCB.Text = "Enable Authorization (Authorization)";
+            this.enableAuthzCB.UseVisualStyleBackColor = true;
+            // 
+            // enableGatewayCB
+            // 
+            this.enableGatewayCB.AutoSize = true;
+            this.enableGatewayCB.Location = new System.Drawing.Point(223, 44);
+            this.enableGatewayCB.Name = "enableGatewayCB";
+            this.enableGatewayCB.Size = new System.Drawing.Size(178, 17);
+            this.enableGatewayCB.TabIndex = 3;
+            this.enableGatewayCB.Text = "Enable Gateway (Gateway)";
+            this.enableGatewayCB.UseVisualStyleBackColor = true;
+            // 
+            // authzGatewayGB
+            // 
+            this.authzGatewayGB.Controls.Add(this.authzRequireSuccessCB);
+            this.authzGatewayGB.Controls.Add(this.labelGatewayGroup);
+            this.authzGatewayGB.Controls.Add(this.gatewayLocalGroupTB);
+            this.authzGatewayGB.Location = new System.Drawing.Point(18, 440);
+            this.authzGatewayGB.Name = "authzGatewayGB";
+            this.authzGatewayGB.Size = new System.Drawing.Size(434, 110);
+            this.authzGatewayGB.TabIndex = 17;
+            this.authzGatewayGB.TabStop = false;
+            this.authzGatewayGB.Text = "Authorization & Gateway Options";
+            // 
+            // authzRequireSuccessCB
+            // 
+            this.authzRequireSuccessCB.AutoSize = true;
+            this.authzRequireSuccessCB.Location = new System.Drawing.Point(10, 25);
+            this.authzRequireSuccessCB.Name = "authzRequireSuccessCB";
+            this.authzRequireSuccessCB.Size = new System.Drawing.Size(220, 17);
+            this.authzRequireSuccessCB.TabIndex = 0;
+            this.authzRequireSuccessCB.Text = "Require RADIUS Authentication Success";
+            this.authzRequireSuccessCB.UseVisualStyleBackColor = true;
+            // 
+            // labelGatewayGroup
+            // 
+            this.labelGatewayGroup.AutoSize = true;
+            this.labelGatewayGroup.Location = new System.Drawing.Point(10, 60);
+            this.labelGatewayGroup.Name = "labelGatewayGroup";
+            this.labelGatewayGroup.Size = new System.Drawing.Size(150, 13);
+            this.labelGatewayGroup.TabIndex = 1;
+            this.labelGatewayGroup.Text = "Local Group to Add Users to:";
+            // 
+            // gatewayLocalGroupTB
+            // 
+            this.gatewayLocalGroupTB.Location = new System.Drawing.Point(180, 57);
+            this.gatewayLocalGroupTB.Name = "gatewayLocalGroupTB";
+            this.gatewayLocalGroupTB.Size = new System.Drawing.Size(150, 20);
+            this.gatewayLocalGroupTB.TabIndex = 2;
             // 
             // Configuration
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(464, 506);
+            this.ClientSize = new System.Drawing.Size(464, 650);
             this.Controls.Add(this.groupBox5);
             this.Controls.Add(this.groupBox1);
             this.Controls.Add(this.label10);
             this.Controls.Add(this.acctGB);
             this.Controls.Add(this.authGB);
+            this.Controls.Add(this.authzGatewayGB);
             this.Controls.Add(this.useModifiedNameCB);
             this.Controls.Add(this.ipAddrSuggestionTB);
             this.Controls.Add(this.label9);
@@ -477,6 +548,8 @@ namespace OpenCredential.Plugin.RADIUS
             this.groupBox1.PerformLayout();
             this.groupBox5.ResumeLayout(false);
             this.groupBox5.PerformLayout();
+            this.authzGatewayGB.ResumeLayout(false);
+            this.authzGatewayGB.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -523,5 +596,13 @@ namespace OpenCredential.Plugin.RADIUS
         private System.Windows.Forms.TextBox forceInterimUpdTB;
         private System.Windows.Forms.CheckBox forceInterimUpdCB;
         private System.Windows.Forms.CheckBox acctingForAllUsersCB;
+        
+        // New Controls Declaration
+        private System.Windows.Forms.CheckBox enableAuthzCB;
+        private System.Windows.Forms.CheckBox enableGatewayCB;
+        private System.Windows.Forms.GroupBox authzGatewayGB;
+        private System.Windows.Forms.CheckBox authzRequireSuccessCB;
+        private System.Windows.Forms.Label labelGatewayGroup;
+        private System.Windows.Forms.TextBox gatewayLocalGroupTB;
     }
 }

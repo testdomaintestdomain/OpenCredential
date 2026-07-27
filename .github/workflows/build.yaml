@@ -3,9 +3,14 @@ name: Build OpenCredential & ALL Plugins
 on:
   push:
     branches: [ "main", "master" ]
+    tags:
+      - "v*" # Запуск при пуше тегов версии, например v1.0.0
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch:
+  workflow_dispatch: # Возможность запустить вручную из вкладки Actions
+
+permissions:
+  contents: write # Дает права на создание Releases в GitHub
 
 jobs:
   build-all:
@@ -130,7 +135,7 @@ jobs:
             }
         }
 
-    # 11. Прописываем АБСОЛЮТНЫЕ пути к SDK и log4net во ВСЕХ .csproj файлах
+    # 11. Прописываем АБСОЛЮТНЫЕ пути к SDK во ВСЕХ .csproj файлах
     - name: Fix HintPaths with Absolute SDK Path
       shell: powershell
       run: |
@@ -155,60 +160,17 @@ jobs:
         .\Build-OpenCredential.ps1 -Target BuildAll -Configuration Release
         .\Build-OpenCredential.ps1 -Target BuildContribPlugins -Configuration Release
 
-    # 13. Дополнительная принудительная сборка оставшихся решений плагинов
-    - name: Build remaining Plugin SLN files
+    # 13. Подготавливаем папку Contrib и раскомментируем её в инсталляторе
+    - name: Prepare Contrib Plugins for Inno Setup
       shell: powershell
       run: |
-        Get-ChildItem -Path "Plugins" -Filter "*.sln" -Recurse | ForEach-Object {
-            Write-Host "Building plugin solution: $($_.FullName)"
-            msbuild $_.FullName /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8 /p:PlatformToolset=v143 /m
+        $contribBin = "Plugins\Contrib\bin"
+        if (-not (Test-Path $contribBin)) { New-Item -ItemType Directory -Force -Path $contribBin | Out-Null }
+
+        Get-ChildItem -Path "Plugins\Contrib" -Filter "*.dll" -Recurse | Where-Object { $_.FullName -notlike "*obj*" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination $contribBin -Force
+            Write-Host "Prepared for Installer: $($_.Name)"
         }
 
-    # 14. Сборка инсталлятора Inno Setup
-    - name: Compile Inno Setup Installer
-      shell: cmd
-      run: |
-        iscc Installer\installer.iss
-
-    # 15. Сбор абсолютно всех скомпилированных DLL плагинов из папок bin
-    - name: Collect ALL Plugin DLLs
-      shell: powershell
-      run: |
-        New-Item -ItemType Directory -Force -Path "All_Compiled_Plugins"
-
-        $searchDirs = @(
-            "Plugins\Contrib\bin",
-            "Plugins\Core\bin",
-            "OpenCredential\src\bin",
-            "Plugins\SDK"
-        )
-
-        foreach ($dir in $searchDirs) {
-            if (Test-Path $dir) {
-                Write-Host "Collecting DLLs from: $dir"
-                Get-ChildItem -Path $dir -Filter "*.dll" | ForEach-Object {
-                    Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
-                    Write-Host " -> Collected: $($_.Name)"
-                }
-            }
-        }
-
-        Get-ChildItem -Path "Plugins" -Filter "OpenCredential.Plugin.*.dll" -Recurse | Where-Object { $_.FullName -notlike "*obj*" } | ForEach-Object {
-            Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
-            Write-Host " -> Collected plugin: $($_.Name)"
-        }
-
-    # 16. Загрузка готовых результатов в Артефакты GitHub
-    - name: Upload Installer (.exe)
-      uses: actions/upload-artifact@v4
-      with:
-        name: OpenCredential-Complete-Setup
-        path: |
-          Installer/*.exe
-          Installer/Output/*.exe
-
-    - name: Upload ALL Plugins (.dll)
-      uses: actions/upload-artifact@v4
-      with:
-        name: ALL-OpenCredential-Plugins-DLLs
-        path: All_Compiled_Plugins/*.dll
+        $issPath = "Installer\installer.iss"
+        if (Test-Path $issPath) {

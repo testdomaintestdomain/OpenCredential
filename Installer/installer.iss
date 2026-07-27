@@ -111,7 +111,7 @@ Source: "..\OpenCredential\src\bin\*.config"; DestDir: "{app}"; Flags: ignorever
 ; that may still be present in bin from older builds and would duplicate PluginUuid.
 Source: "..\Plugins\Core\bin\*.dll"; DestDir: "{app}\Plugins\Core"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "pGina.Plugin.*,pGina.Shared.dll,Abstractions.dll"
 Source: "..\Plugins\Core\bin\*.xml"; DestDir: "{app}\Plugins\Core"; Flags: ignoreversion recursesubdirs createallsubdirs
-;Source: "..\Plugins\Contrib\bin\*.dll"; DestDir: "{app}\Plugins\Contrib"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\Plugins\Contrib\bin\*.dll"; DestDir: "{app}\Plugins\Contrib"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 
 [Icons]

@@ -44,16 +44,11 @@ using OpenCredential.Shared.Settings;
 
 namespace OpenCredential.Plugin.RADIUS
 {
-
-    //TODO:
-    //Idle-Timeout - Unsure if possible / pgina's responsibility
-
-
-    public class RADIUSPlugin : IPluginConfiguration, IPluginAuthentication, IPluginEventNotifications
+    public class RADIUSPlugin : IPluginConfiguration, IPluginAuthentication, IPluginAuthorization, IPluginAuthenticationGateway, IPluginEventNotifications
     {
         private ILog m_logger = LogManager.GetLogger("RADIUSPlugin");
         public static Guid SimpleUuid = new Guid("{350047A0-2D0B-4E24-9F99-16CD18D6B142}");
-        private string m_defaultDescription = "A RADIUS Authentication and Accounting Plugin";
+        private string m_defaultDescription = "A RADIUS Authentication, Authorization and Accounting Plugin";
         private dynamic m_settings = null;
         private Dictionary<Guid, Session> m_sessionManager;
 
@@ -94,10 +89,9 @@ namespace OpenCredential.Plugin.RADIUS
             get { return SimpleUuid; }
         }
 
-        //Authenticates user
-        BooleanResult IPluginAuthentication.AuthenticateUser(SessionProperties properties)
+        // Authenticates user
+        public BooleanResult AuthenticateUser(SessionProperties properties)
         {
-
             m_logger.DebugFormat("AuthenticateUser({0})", properties.Id.ToString());
 
             if (!(bool)Settings.Store.EnableAuth)
@@ -121,12 +115,11 @@ namespace OpenCredential.Plugin.RADIUS
                     Session session = new Session(properties.Id, userInfo.Username, client);
                     Packet p = client.lastReceievedPacket;
 
-                    //Check for session timeout
+                    // Check for session timeout
                     if ((bool)Settings.Store.AllowSessionTimeout && p.containsAttribute(Packet.AttributeType.Session_Timeout))
                     {   
                         int seconds = client.lastReceievedPacket.getFirstIntAttribute(Packet.AttributeType.Session_Timeout);
                         session.SetSessionTimeout(seconds, SessionTimeoutCallback);
-                        //m_logger.DebugFormat("Setting timeout for {0} to {1} seconds.", userInfo.Username, seconds);
                     }
 
                     if (p.containsAttribute(Packet.AttributeType.Idle_Timeout))
@@ -136,15 +129,11 @@ namespace OpenCredential.Plugin.RADIUS
 
                     if(p.containsAttribute(Packet.AttributeType.Vendor_Specific)){
                         foreach(byte[] val in p.getByteArrayAttributes(Packet.AttributeType.Vendor_Specific)){
-                            //m_logger.DebugFormat("Vendor ID: {0:D}, Type: {1:D}, Value: {2}", Packet.VSA_vendorID(val), Packet.VSA_VendorType(val), Packet.VSA_valueAsString(val));
-
                             if ((bool)Settings.Store.WisprSessionTerminate && Packet.VSA_vendorID(val) == (int)Packet.VSA_WISPr.Vendor_ID 
                                 && Packet.VSA_VendorType(val) == (int)Packet.VSA_WISPr.WISPr_Session_Terminate_Time)
                             {
-                                
                                 try
                                 {
-                                    //Value is in format "2014-03-11T23:59:59"
                                     string sdt = Packet.VSA_valueAsString(val);
                                     DateTime dt = DateTime.ParseExact(sdt, "yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
 
@@ -152,21 +141,18 @@ namespace OpenCredential.Plugin.RADIUS
                                     {
                                         session.Set_Session_Terminate(dt, SessionTerminateCallback);
                                     }
-
                                     else
                                         m_logger.DebugFormat("The timestamp provided for WisperSessionTerminate time value has passed.");
-
                                 }
-                                catch (FormatException e)
+                                catch (FormatException)
                                 {
                                     m_logger.DebugFormat("Unable to parse timestamp: {0}", Packet.VSA_valueAsString(val));
                                 }
                             }
                         }
-
                     }
 
-                    //Check for interim-update
+                    // Check for interim-update
                     if ((bool)Settings.Store.SendInterimUpdates)
                     {
                         int seconds = 0;
@@ -176,7 +162,6 @@ namespace OpenCredential.Plugin.RADIUS
                             seconds = client.lastReceievedPacket.getFirstIntAttribute(Packet.AttributeType.Acct_Interim_Interval);
                         }
 
-                        //Check to see if plugin is set to send interim updates more frequently
                         if ((bool)Settings.Store.ForceInterimUpdates)
                         {
                             int forceTime = (int)Settings.Store.InterimUpdateTime;
@@ -184,23 +169,19 @@ namespace OpenCredential.Plugin.RADIUS
                                 seconds = forceTime;
                         }
 
-                        //Set interim update
                         if (seconds > 0)
                         {
                             session.SetInterimUpdate(seconds, InterimUpdatesCallback);
                             m_logger.DebugFormat("Setting interim update interval for {0} to {1} seconds.", userInfo.Username, seconds);
                         }
-
                         else
                         {
                             m_logger.DebugFormat("Interim Updates are enabled, but no update interval was provided by the server or user.");
                         }
-                        
                     }
 
                     lock (m_sessionManager)
                     {
-                        //m_logger.DebugFormat("Adding session to m_sessionManager. ID: {0}, session: {1}", session.id, session);
                         m_sessionManager.Add(session.id, session);
                     }
 
@@ -211,22 +192,19 @@ namespace OpenCredential.Plugin.RADIUS
                     return new BooleanResult() { Success = result, Message = message };
                 }
 
-                //Failure
                 string msg = "Unable to validate username or password.";
 
                 if (client.lastReceievedPacket == null)
                 {
                     msg = msg + " No response from server.";
                 }
-
                 else if (client.lastReceievedPacket.containsAttribute(Packet.AttributeType.Reply_Message))
                 {
                     msg = client.lastReceievedPacket.getFirstStringAttribute(Packet.AttributeType.Reply_Message);
                 }
-
                 else if (client.lastReceievedPacket.code == Packet.Code.Access_Reject)
                 {
-                    msg = msg + String.Format(" Access Rejected.");
+                    msg = msg + " Access Rejected.";
                 }
 
                 return new BooleanResult() { Success = result, Message = msg };
@@ -239,23 +217,91 @@ namespace OpenCredential.Plugin.RADIUS
             catch (Exception e)
             {
                 m_logger.Error("An unexpected error occurred while authenticating.", e);
-                throw e;
+                throw;
             }
         }
 
-        //Processes accounting on logon/logoff
+        // Authorize user
+        public BooleanResult AuthorizeUser(SessionProperties properties)
+        {
+            m_logger.Debug("RADIUS Plugin Authorization");
+
+            if (!(bool)Settings.Store.EnableAuthz)
+            {
+                m_logger.Debug("RADIUS Authorization is not enabled.");
+                return new BooleanResult() { Success = true };
+            }
+
+            bool requireSuccess = (bool)Settings.Store.AuthzRequireSuccess;
+            if (requireSuccess && !WeAuthedThisUser(properties))
+            {
+                m_logger.InfoFormat("Deny because RADIUS auth failed or did not run, and configured to require RADIUS auth success.");
+                return new BooleanResult()
+                {
+                    Success = false,
+                    Message = "RADIUS authentication did not succeed."
+                };
+            }
+
+            return new BooleanResult() { Success = true };
+        }
+
+        private bool WeAuthedThisUser(SessionProperties properties)
+        {
+            PluginActivityInformation actInfo = properties.GetTrackedSingle<PluginActivityInformation>();
+            try
+            {
+                BooleanResult result = actInfo.GetAuthenticationResult(this.Uuid);
+                return result.Success;
+            }
+            catch (KeyNotFoundException)
+            {
+                return false;
+            }
+        }
+
+        // Gateway logic (assign configured local group)
+        public BooleanResult AuthenticatedUserGateway(SessionProperties properties)
+        {
+            m_logger.Debug("RADIUS Plugin Gateway");
+
+            if (!(bool)Settings.Store.EnableGateway)
+            {
+                m_logger.Debug("RADIUS Gateway is not enabled.");
+                return new BooleanResult() { Success = true };
+            }
+
+            try
+            {
+                UserInformation userInfo = properties.GetTrackedSingle<UserInformation>();
+                string localGroup = Settings.Store.GatewayLocalGroup;
+                if (!string.IsNullOrEmpty(localGroup))
+                {
+                    m_logger.InfoFormat("Adding user {0} to local group {1} (RADIUS gateway)", userInfo.Username, localGroup);
+                    userInfo.AddGroup(new GroupInformation() { Name = localGroup });
+                    return new BooleanResult() { Success = true, Message = string.Format("Added to group: {0}", localGroup) };
+                }
+            }
+            catch (Exception e)
+            {
+                m_logger.ErrorFormat("Error during gateway: {0}", e);
+                return new BooleanResult() { Success = true, Message = e.Message };
+            }
+
+            return new BooleanResult() { Success = true, Message = "No groups added." };
+        }
+
+        // Processes accounting on logon/logoff
         public void SessionChange(System.ServiceProcess.SessionChangeDescription changeDescription, OpenCredential.Shared.Types.SessionProperties properties)
         {
             if (changeDescription.Reason != System.ServiceProcess.SessionChangeReason.SessionLogon
                 && changeDescription.Reason != System.ServiceProcess.SessionChangeReason.SessionLogoff)
             {
-                //m_logger.DebugFormat("Not logging on or off for this session change call ({0})... exiting.", changeDescription.Reason);
                 return;
             }
 
             if (properties == null)
             {
-                //m_logger.DebugFormat("No session properties available. This account does not appear to be managed by pGina. Exiting SessionChange()");
                 return;
             }
 
@@ -265,16 +311,13 @@ namespace OpenCredential.Plugin.RADIUS
                 return;
             }
 
-            //Determine username (may change depending on value of UseModifiedName setting)
-            string username = null;
+            string username;
             UserInformation ui = properties.GetTrackedSingle<UserInformation>();
 
             if (ui == null)
             {
-                //m_logger.DebugFormat("No userinformation for this session logoff... exiting...");
                 return;
             }
-                    
 
             if ((bool)Settings.Store.UseModifiedName)
                 username = ui.Username;
@@ -283,19 +326,13 @@ namespace OpenCredential.Plugin.RADIUS
 
             Session session = null;
 
-            //User is logging on
             if (changeDescription.Reason == System.ServiceProcess.SessionChangeReason.SessionLogon)
             {
                 lock (m_sessionManager)
                 {
-                    //Check if session information is already available for this id
                     if (!m_sessionManager.Keys.Contains(properties.Id))
                     {
-                        //No session info - must have authed with something other than RADIUS.
-                        //m_logger.DebugFormat("RADIUS Accounting Logon: Unable to find session for {0} with GUID {1}", username, properties.Id);
-
                         if(!(bool)Settings.Store.AcctingForAllUsers){
-                            //m_logger.Debug("Accounting for non-RADIUS users is disabled. Exiting.");
                             return;
                         }
 
@@ -303,20 +340,16 @@ namespace OpenCredential.Plugin.RADIUS
                         session = new Session(properties.Id, username, client);
                         m_sessionManager.Add(properties.Id, session);
                             
-                        //Check forced interim-update setting
                         if ((bool)Settings.Store.SendInterimUpdates && (bool)Settings.Store.ForceInterimUpdates)
                         {
                             int interval = (int)Settings.Store.InterimUpdateTime;
                             session.SetInterimUpdate(interval, InterimUpdatesCallback);
                         }
                     }
-
                     else
                         session = m_sessionManager[properties.Id];
                 }
 
-
-                //Determine which plugin authenticated the user (if any)
                 PluginActivityInformation pai = properties.GetTrackedSingle<PluginActivityInformation>();
                 Packet.Acct_Authentic authSource = Packet.Acct_Authentic.Not_Specified;
                 IEnumerable<Guid> authPlugins = pai.GetAuthenticationPlugins();
@@ -329,32 +362,26 @@ namespace OpenCredential.Plugin.RADIUS
                             authSource = Packet.Acct_Authentic.RADIUS;
                         else if (guid == LocalMachinePluginGuid)
                             authSource = Packet.Acct_Authentic.Local;
-                        else //Not RADIUS, not Local, must be some other auth plugin
+                        else
                             authSource = Packet.Acct_Authentic.Remote;
                         break;
                     }
                 }
 
-                //We can finally start the accounting process
                 try
                 {
                     lock (session)
                     {
-                        session.windowsSessionId = changeDescription.SessionId; //Grab session ID now that we're authenticated
-                        session.username = username; //Accting username may have changed depending on 'Use Modified username for accounting option'
+                        session.windowsSessionId = changeDescription.SessionId;
+                        session.username = username;
                         session.client.startAccounting(username, authSource);
-                        //m_logger.DebugFormat("Successfully completed accounting start process...");
                     }
                 }
                 catch (Exception e)
                 {
                     m_logger.Error("Error occurred while starting accounting.", e);
                 }
-
             }
-
-                
-            //User is logging off
             else if (changeDescription.Reason == System.ServiceProcess.SessionChangeReason.SessionLogoff)
             {
                 lock (m_sessionManager)
@@ -363,27 +390,22 @@ namespace OpenCredential.Plugin.RADIUS
                         session = m_sessionManager[properties.Id];
                     else
                     {
-                        //m_logger.DebugFormat("Users {0} is logging off, but no RADIUS session information is available for session ID {1}.", username, properties.Id);
                         return;
                     }
 
-                    //Remove the session from the session manager
                     m_sessionManager.Remove(properties.Id);
                 }
 
                 lock (session)
                 {
-                    //Disbale any active callbacks for this session
                     session.disableCallbacks();
                     session.active = false;
 
-                    //Assume normal logout if no other terminate reason is listed.
                     if (session.terminate_cause == null)
                         session.terminate_cause = Packet.Acct_Terminate_Cause.User_Request;
 
                     try
                     {
-                        //m_logger.DebugFormat("About to send accounting stop packet. Session has been active {0} seconds.", (DateTime.Now - session.client.accountingStartTime).TotalSeconds);
                         session.client.stopAccounting(session.username, session.terminate_cause);
                     }
                     catch (RADIUSException re)
@@ -392,7 +414,6 @@ namespace OpenCredential.Plugin.RADIUS
                     }
                 }
             }
-            
         }
 
         public void Configure()
@@ -408,8 +429,6 @@ namespace OpenCredential.Plugin.RADIUS
         }
         public void Stopping() { }
 
-
-        //Returns the client instantiated based on registry settings
         private RADIUSClient GetClient(string sessionId = null)
         {
             string[] servers = Regex.Split(Settings.Store.Server.Trim(), @"\s+");
@@ -418,7 +437,6 @@ namespace OpenCredential.Plugin.RADIUS
             string sharedKey = Settings.Store.GetEncryptedSetting("SharedSecret");
             int timeout = Settings.Store.Timeout;
             int retry = Settings.Store.Retry;
-
 
             byte[] ipAddr = null;
             string nasIdentifier = null;
@@ -450,27 +468,21 @@ namespace OpenCredential.Plugin.RADIUS
                 .Replace("%computername", Environment.MachineName);
         }
         
-        //Returns a tuple containing the current IPv4 address and mac address for the adapter
-        //If ipAddressRegex is set, this will attempt to return the first address that matches the expression
-        //Otherwise it returns the first viable IP address or 0.0.0.0 if no viable address is found. An empty
-        //string is sent if no mac address is determined.
         private Tuple<byte[], string> getNetworkInfo()
         {
             string ipAddressRegex = Settings.Store.IPSuggestion;
            
-            //Fallback values
             byte[] ipAddr = null;
             string macAddr = null;
 
-            //Check each network adapter. 
             foreach(NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces()){
                 foreach (UnicastIPAddressInformation ipaddr in nic.GetIPProperties().UnicastAddresses)
-                {   //Check to see if the NIC has any valid IP addresses.
+                {
                     if (ipaddr.Address.AddressFamily == AddressFamily.InterNetwork)
-                        if (String.IsNullOrEmpty(ipAddressRegex) || //IP address, grab first adapter or check if it matches ip regex
+                        if (String.IsNullOrEmpty(ipAddressRegex) || 
                           Regex.Match(ipaddr.Address.ToString(), ipAddressRegex).Success)
                             return Tuple.Create(ipaddr.Address.GetAddressBytes(), nic.GetPhysicalAddress().ToString());
-                        else if(ipAddr == null && macAddr == null){ //Fallback, grab info from first device
+                        else if(ipAddr == null && macAddr == null){
                             ipAddr = ipaddr.Address.GetAddressBytes();
                             macAddr = nic.GetPhysicalAddress().ToString();
                         }
@@ -481,12 +493,10 @@ namespace OpenCredential.Plugin.RADIUS
             return Tuple.Create(ipAddr, macAddr);
         }
 
-        //Gets invoked by timer callback after the session times out
         private void SessionTimeoutCallback(object state)
         {
             Session session = (Session)state;
 
-            //Lock session? Might cause issues when we call LogoffSession on user and trigger the SessionChange method?
             if(!session.windowsSessionId.HasValue){
                 m_logger.DebugFormat("Attempting to log user {0} out due to timeout, but no windows session ID is present for ID {1}", session.username, session.id);
                 return;
@@ -499,11 +509,9 @@ namespace OpenCredential.Plugin.RADIUS
             session.terminate_cause = Packet.Acct_Terminate_Cause.Session_Timeout;
 
             m_logger.DebugFormat("Logging off user {0} in session{1} due to session timeout.", session.username, session.windowsSessionId);
-            bool result = Abstractions.WindowsApi.pInvokes.LogoffSession(session.windowsSessionId.Value);
-            //m_logger.DebugFormat("Log off {0}.", result ? "successful" : "failed");
+            Abstractions.WindowsApi.pInvokes.LogoffSession(session.windowsSessionId.Value);
         }
 
-        //Gets invoked if wispr session limit 
         private void SessionTerminateCallback(object state)
         {
             Session session = (Session)state;
@@ -522,16 +530,12 @@ namespace OpenCredential.Plugin.RADIUS
             session.terminate_cause = Packet.Acct_Terminate_Cause.Session_Timeout;
 
             m_logger.DebugFormat("Logging off user {0} in session{1} due to session-terminate-time.", session.username, session.windowsSessionId);
-            bool result = Abstractions.WindowsApi.pInvokes.LogoffSession(session.windowsSessionId.Value);
-            //m_logger.DebugFormat("Log off {0}.", result ? "successful" : "failed");
-            
+            Abstractions.WindowsApi.pInvokes.LogoffSession(session.windowsSessionId.Value);
         }
 
-        //Gets invoked when its time to send interim updates
         private void InterimUpdatesCallback(object state)
         {
             Session session = (Session)state;
-            //m_logger.DebugFormat("Sending interim-update for user {0}", session.username); 
             lock (session)
             {
                 try

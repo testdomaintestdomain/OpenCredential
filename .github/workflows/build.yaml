@@ -12,14 +12,14 @@ jobs:
     runs-on: windows-2022
 
     steps:
-    # 1. Клонируем репозиторий вместе со всеми внешними библиотеками и подмодулями
+    # 1. Клонируем репозиторий вместе со всеми подмодулями
     - name: Checkout repository & submodules
       uses: actions/checkout@v4
       with:
         submodules: 'recursive'
         fetch-depth: 0
 
-    # 2. Принудительно обновляем git submodules на случай, если какие-то библиотеки в них
+    # 2. Инициализируем подмодули git
     - name: Init Git Submodules
       run: |
         git submodule update --init --recursive
@@ -34,7 +34,36 @@ jobs:
     - name: Install Inno Setup
       run: choco install innosetup --no-progress -y
 
-    # 4. Исправляем C++ Platform Toolset с v145 на v143 (для Visual Studio 2022)
+    # 4. Скачиваем log4net и помещаем log4net.dll в необходимые директории external/lib
+    - name: Download and prepare log4net.dll
+      shell: powershell
+      run: |
+        Write-Host "Installing log4net via NuGet..."
+        nuget install log4net -Version 2.0.15 -OutputDirectory ".\packages"
+        
+        $log4netDll = Get-ChildItem -Path ".\packages" -Filter "log4net.dll" -Recurse | Where-Object { $_.FullName -like "*net40*" -or $_.FullName -like "*net45*" -or $_.FullName -like "*net20*" } | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $log4netDll) {
+            $log4netDll = Get-ChildItem -Path ".\packages" -Filter "log4net.dll" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+        }
+        Write-Host "Found log4net.dll at: $log4netDll"
+
+        # Создаем целевые папки external/lib и копируем туда DLL
+        $targetPaths = @(
+            "OpenCredential\src\external\lib",
+            "src\external\lib",
+            "external\lib"
+        )
+
+        foreach ($relPath in $targetPaths) {
+            $fullDir = Join-Path (Get-Location) $relPath
+            if (-not (Test-Path $fullDir)) {
+                New-Item -ItemType Directory -Force -Path $fullDir | Out-Null
+            }
+            Copy-Item $log4netDll -Destination (Join-Path $fullDir "log4net.dll") -Force
+            Write-Host "Copied log4net.dll to: $fullDir"
+        }
+
+    # 5. Исправляем C++ Platform Toolset с v145 на v143 (для Visual Studio 2022)
     - name: Retarget C++ Projects (v145 -> v143)
       shell: powershell
       run: |
@@ -43,7 +72,7 @@ jobs:
             (Get-Content $_.FullName) -replace '<PlatformToolset>v145</PlatformToolset>', '<PlatformToolset>v143</PlatformToolset>' | Set-Content $_.FullName
         }
 
-    # 5. Исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
+    # 6. Исправляем путь к MSBuild.exe в скрипте Build-OpenCredential.ps1
     - name: Patch Build-OpenCredential.ps1 MSBuild Path
       shell: powershell
       run: |
@@ -55,7 +84,7 @@ jobs:
         $scriptPath = ".\Build-OpenCredential.ps1"
         (Get-Content $scriptPath) -replace '\$msbuildPath = ".*"', "`$msbuildPath = '$msbuild'" | Set-Content $scriptPath
 
-    # 6. Восстанавливаем пакеты NuGet
+    # 7. Восстанавливаем пакеты NuGet для всех решений
     - name: Restore NuGet Packages for ALL solutions
       shell: powershell
       run: |
@@ -64,19 +93,19 @@ jobs:
             nuget restore $_.FullName
         }
 
-    # 7. Сборка ядра OpenCredential и основных плагинов
+    # 8. Сборка ядра OpenCredential и основных плагинов
     - name: Build Core Solution & Core Plugins
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildAll -Configuration Release
 
-    # 8. Сборка всех дополнительных плагинов (включая RADIUS Plugin)
+    # 9. Сборка всех дополнительных плагинов (включая RADIUS Plugin)
     - name: Build ALL Contrib Plugins
       shell: powershell
       run: |
         .\Build-OpenCredential.ps1 -Target BuildContribPlugins -Configuration Release
 
-    # 9. Принудительная сборка оставшихся решений плагинов
+    # 10. Принудительная сборка оставшихся плагинов
     - name: Build any orphan Plugin SLN files
       shell: powershell
       run: |
@@ -85,25 +114,25 @@ jobs:
             msbuild $_.FullName /p:Configuration=Release /p:Platform="Any CPU" /p:PlatformToolset=v143 /m
         }
 
-    # 10. Сборка инсталлятора
+    # 11. Сборка инсталлятора Inno Setup
     - name: Compile Inno Setup Installer
       shell: cmd
       run: |
         iscc Installer\installer.iss
 
-    # 11. Сбор всех готовых DLL плагинов в один каталог
+    # 12. Сбор всех скомпилированных DLL плагинов в один каталог
     - name: Collect ALL Plugin DLLs
       shell: powershell
       run: |
         New-Item -ItemType Directory -Force -Path "All_Compiled_Plugins"
-        Get-ChildItem -Path "Plugins" -Filter "*.dll" -Recurse | Where-Object { 
+        Get-ChildItem -Path . -Filter "*.dll" -Recurse | Where-Object { 
             $_.FullName -like "*Release*" -and $_.FullName -notlike "*obj*" 
         } | ForEach-Object {
             Write-Host "Collecting plugin: $($_.Name)"
             Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
         }
 
-    # 12. Публикация готовых результатов в Artifacts
+    # 13. Загрузка готовых результатов в Артефакты
     - name: Upload Installer (.exe)
       uses: actions/upload-artifact@v4
       with:

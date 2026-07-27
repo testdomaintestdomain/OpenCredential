@@ -1,0 +1,93 @@
+name: Build OpenCredential & ALL Plugins
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Ручной запуск из веб-интерфейса GitHub
+
+jobs:
+  build-all:
+    runs-on: windows-2022
+
+    steps:
+    # 1. Клонируем репозиторий вместе со всеми подмодулями
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    # 2. Подготавливаем окружение Visual Studio 2022 и MSBuild
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+
+    - name: Install Inno Setup
+      run: choco install innosetup --no-progress -y
+
+    # 3. Находим и восстанавливаем NuGet-пакеты для ВСЕХ решений (.sln) в проекте
+    - name: Restore NuGet Packages for ALL solutions
+      shell: powershell
+      run: |
+        Get-ChildItem -Path . -Filter "*.sln" -Recurse | ForEach-Object {
+            Write-Host "Restoring NuGet packages for: $($_.FullName)"
+            nuget restore $_.FullName
+        }
+
+    # 4. Сборка ядра OpenCredential и всех основных (Core) плагинов
+    - name: Build Core Solution & Core Plugins
+      shell: powershell
+      run: |
+        .\Build-OpenCredential.ps1 -Target BuildAll -Configuration Release
+
+    # 5. Сборка ВСЕХ дополнительных (Contrib) плагинов (RADIUS, Database, etc.)
+    - name: Build ALL Contrib Plugins
+      shell: powershell
+      run: |
+        .\Build-OpenCredential.ps1 -Target BuildContribPlugins -Configuration Release
+
+    # 6. Дополнительная принудительная сборка любых независимых решений плагинов
+    - name: Build any orphan Plugin SLN files
+      shell: powershell
+      run: |
+        Get-ChildItem -Path "Plugins" -Filter "*.sln" -Recurse | ForEach-Object {
+            Write-Host "Building plugin solution: $($_.FullName)"
+            msbuild $_.FullName /p:Configuration=Release /p:Platform="Any CPU" /m
+        }
+
+    # 7. Сборка единого инсталлятора Windows (.exe)
+    - name: Compile Inno Setup Installer
+      shell: cmd
+      run: |
+        iscc Installer\installer.iss
+
+    # 8. Сбор всех скомпилированных DLL плагинов в отдельную папку для удобного скачивания
+    - name: Collect ALL Plugin DLLs
+      shell: powershell
+      run: |
+        New-Item -ItemType Directory -Force -Path "All_Compiled_Plugins"
+        Get-ChildItem -Path "Plugins" -Filter "*.dll" -Recurse | Where-Object { 
+            $_.FullName -like "*Release*" -and $_.FullName -notlike "*obj*" 
+        } | ForEach-Object {
+            Write-Host "Collecting plugin: $($_.Name)"
+            Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
+        }
+
+    # 9. Загрузка готовго инсталлятора
+    - name: Upload Installer (.exe)
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenCredential-Complete-Setup
+        path: |
+          Installer/*.exe
+          Installer/Output/*.exe
+
+    # 10. Загрузка ВСЕХ скомпилированных плагинов в одном архиве
+    - name: Upload ALL Plugins (.dll)
+      uses: actions/upload-artifact@v4
+      with:
+        name: ALL-OpenCredential-Plugins-DLLs
+        path: All_Compiled_Plugins/*.dll

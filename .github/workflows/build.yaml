@@ -4,20 +4,20 @@ on:
   push:
     branches: [ "main", "master" ]
     tags:
-      - "v*" # Запуск при пуше тегов версии, например v1.0.0
+      - "v*"
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Возможность запустить вручную из вкладки Actions
+  workflow_dispatch:
 
 permissions:
-  contents: write # Дает права на создание Releases в GitHub
+  contents: write
 
 jobs:
   build-all:
     runs-on: windows-2022
 
     steps:
-    # 1. Клонируем репозиторий вместе со всеми подмодулями
+    # 1. Клонируем репозиторий
     - name: Checkout repository & submodules
       uses: actions/checkout@v4
       with:
@@ -165,7 +165,9 @@ jobs:
       shell: powershell
       run: |
         $contribBin = "Plugins\Contrib\bin"
-        if (-not (Test-Path $contribBin)) { New-Item -ItemType Directory -Force -Path $contribBin | Out-Null }
+        if (-not (Test-Path $contribBin)) {
+            New-Item -ItemType Directory -Force -Path $contribBin | Out-Null
+        }
 
         Get-ChildItem -Path "Plugins\Contrib" -Filter "*.dll" -Recurse | Where-Object { $_.FullName -notlike "*obj*" } | ForEach-Object {
             Copy-Item $_.FullName -Destination $contribBin -Force
@@ -174,3 +176,84 @@ jobs:
 
         $issPath = "Installer\installer.iss"
         if (Test-Path $issPath) {
+            $lines = Get-Content $issPath
+            $newLines = @()
+            foreach ($line in $lines) {
+                if ($line -like "*Plugins\Contrib\bin\*") {
+                    $newLines += $line.Replace(";", "")
+                } else {
+                    $newLines += $line
+                }
+            }
+            Set-Content -Path $issPath -Value $newLines
+            Write-Host "Uncommented Contrib line in $issPath"
+        }
+
+    # 14. Сборка инсталлятора Inno Setup
+    - name: Compile Inno Setup Installer
+      shell: cmd
+      run: |
+        iscc Installer\installer.iss
+
+    # 15. Сбор всех скомпилированных DLL плагинов и архивация в ZIP
+    - name: Collect ALL Plugin DLLs and Create ZIP
+      shell: powershell
+      run: |
+        New-Item -ItemType Directory -Force -Path "All_Compiled_Plugins"
+
+        $searchDirs = @(
+            "Plugins\Contrib\bin",
+            "Plugins\Core\bin",
+            "OpenCredential\src\bin",
+            "Plugins\SDK"
+        )
+
+        foreach ($dir in $searchDirs) {
+            if (Test-Path $dir) {
+                Get-ChildItem -Path $dir -Filter "*.dll" | ForEach-Object {
+                    Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
+                }
+            }
+        }
+
+        Get-ChildItem -Path "Plugins" -Filter "OpenCredential.Plugin.*.dll" -Recurse | Where-Object { $_.FullName -notlike "*obj*" } | ForEach-Object {
+            Copy-Item $_.FullName -Destination "All_Compiled_Plugins\" -Force
+        }
+
+        Compress-Archive -Path "All_Compiled_Plugins\*" -DestinationPath "OpenCredential-All-Plugins.zip" -Force
+        Write-Host "Created OpenCredential-All-Plugins.zip"
+
+    # 16. Сохранение результатов в Артефакты
+    - name: Upload Installer (.exe) Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenCredential-Complete-Setup
+        path: |
+          Installer/*.exe
+          Installer/Output/*.exe
+
+    - name: Upload ALL Plugins Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ALL-OpenCredential-Plugins-DLLs
+        path: All_Compiled_Plugins/*.dll
+
+    # 17. Публикация в GitHub Release
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+      with:
+        tag_name: ${{ github.ref_name != 'main' && github.ref_name != 'master' && github.ref_name || 'latest' }}
+        name: OpenCredential Build Release (${{ github.ref_name }})
+        body: |
+          Automated release containing:
+          - Complete OpenCredential Installer (.exe)
+          - All compiled Core & Contrib plugins (including RADIUS) (.zip)
+        draft: false
+        prerelease: false
+        files: |
+          Installer/*.exe
+          Installer/Output/*.exe
+          OpenCredential-All-Plugins.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

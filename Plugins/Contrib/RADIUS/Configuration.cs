@@ -122,38 +122,47 @@ namespace OpenCredential.Plugin.RADIUS
 
         private void load()
         {
-            enableAuthCB.Checked = (bool)Settings.Store.EnableAuth;
-            enableAcctCB.Checked = (bool)Settings.Store.EnableAcct;
+            enableAuthCB.Checked = (bool)Settings.Store.GetSetting("EnableAuth", true);
+            enableAcctCB.Checked = (bool)Settings.Store.GetSetting("EnableAcct", false);
 
-            // Authorization & Gateway Settings
-            enableAuthzCB.Checked = (bool)Settings.Store.EnableAuthz;
-            authzRequireSuccessCB.Checked = (bool)Settings.Store.AuthzRequireSuccess;
-            enableGatewayCB.Checked = (bool)Settings.Store.EnableGateway;
-            gatewayLocalGroupTB.Text = Settings.Store.GatewayLocalGroup;
+            // Safe Authorization & Gateway Settings Loading
+            enableAuthzCB.Checked = (bool)Settings.Store.GetSetting("EnableAuthz", true);
+            authzRequireSuccessCB.Checked = (bool)Settings.Store.GetSetting("AuthzRequireSuccess", true);
+            enableGatewayCB.Checked = (bool)Settings.Store.GetSetting("EnableGateway", true);
+            gatewayLocalGroupTB.Text = (string)Settings.Store.GetSetting("GatewayLocalGroup", "Users");
 
-            serverTB.Text = Settings.Store.Server;
-            authPortTB.Text = String.Format("{0}", (int)Settings.Store.AuthPort);
-            acctPortTB.Text = String.Format("{0}", (int)Settings.Store.AcctPort);
-            secretTB.Text = Settings.Store.GetEncryptedSetting("SharedSecret") ;
-            timeoutTB.Text = String.Format("{0:0.00}", ((int)Settings.Store.Timeout) / 1000.0 );
-            retryTB.Text = String.Format("{0}", (int)Settings.Store.Retry);
+            serverTB.Text = (string)Settings.Store.GetSetting("Server", "");
+            authPortTB.Text = String.Format("{0}", (int)Settings.Store.GetSetting("AuthPort", 1812));
+            acctPortTB.Text = String.Format("{0}", (int)Settings.Store.GetSetting("AcctPort", 1813));
 
-            sendNasIpAddrCB.Checked = (bool)Settings.Store.SendNASIPAddress;
-            sendNasIdentifierCB.Checked = (bool)Settings.Store.SendNASIdentifier;
-            sendNasIdentifierTB.Text = Settings.Store.NASIdentifier;
-            sendCalledStationCB.Checked = (bool)Settings.Store.SendCalledStationID;
-            sendCalledStationTB.Text = Settings.Store.CalledStationID;
+            try
+            {
+                secretTB.Text = Settings.Store.GetEncryptedSetting("SharedSecret");
+            }
+            catch (KeyNotFoundException)
+            {
+                secretTB.Text = "";
+            }
 
-            acctingForAllUsersCB.Checked = (bool)Settings.Store.AcctingForAllUsers;
-            sendInterimUpdatesCB.Checked = (bool)Settings.Store.SendInterimUpdates;
-            forceInterimUpdCB.Checked = (bool)Settings.Store.ForceInterimUpdates;
-            forceInterimUpdTB.Text = String.Format("{0}", (int)Settings.Store.InterimUpdateTime);
+            timeoutTB.Text = String.Format("{0:0.00}", ((int)Settings.Store.GetSetting("Timeout", 2500)) / 1000.0 );
+            retryTB.Text = String.Format("{0}", (int)Settings.Store.GetSetting("Retry", 3));
 
-            sessionTimeoutCB.Checked = (bool)Settings.Store.AllowSessionTimeout;
-            wisprTimeoutCB.Checked = (bool)Settings.Store.WisprSessionTerminate;
+            sendNasIpAddrCB.Checked = (bool)Settings.Store.GetSetting("SendNASIPAddress", true);
+            sendNasIdentifierCB.Checked = (bool)Settings.Store.GetSetting("SendNASIdentifier", true);
+            sendNasIdentifierTB.Text = (string)Settings.Store.GetSetting("NASIdentifier", "%computername");
+            sendCalledStationCB.Checked = (bool)Settings.Store.GetSetting("SendCalledStationID", false);
+            sendCalledStationTB.Text = (string)Settings.Store.GetSetting("CalledStationID", "%macaddr");
 
-            ipAddrSuggestionTB.Text = Settings.Store.IPSuggestion;
-            useModifiedNameCB.Checked = (bool)Settings.Store.UseModifiedName;
+            acctingForAllUsersCB.Checked = (bool)Settings.Store.GetSetting("AcctingForAllUsers", false);
+            sendInterimUpdatesCB.Checked = (bool)Settings.Store.GetSetting("SendInterimUpdates", false);
+            forceInterimUpdCB.Checked = (bool)Settings.Store.GetSetting("ForceInterimUpdates", false);
+            forceInterimUpdTB.Text = String.Format("{0}", (int)Settings.Store.GetSetting("InterimUpdateTime", 900));
+
+            sessionTimeoutCB.Checked = (bool)Settings.Store.GetSetting("AllowSessionTimeout", false);
+            wisprTimeoutCB.Checked = (bool)Settings.Store.GetSetting("WisprSessionTerminate", false);
+
+            ipAddrSuggestionTB.Text = (string)Settings.Store.GetSetting("IPSuggestion", "");
+            useModifiedNameCB.Checked = (bool)Settings.Store.GetSetting("UseModifiedName", false);
         }
 
         private void checkboxModifyInputs(object sender, EventArgs e)

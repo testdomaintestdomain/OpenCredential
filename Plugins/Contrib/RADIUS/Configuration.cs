@@ -24,6 +24,11 @@ namespace OpenCredential.Plugin.RADIUS
             enableAuthCB.CheckedChanged += checkboxModifyInputs;
             enableAcctCB.CheckedChanged += checkboxModifyInputs;
             sendInterimUpdatesCB.CheckedChanged += checkboxModifyInputs;
+            
+            // New event handlers for authorization and gateway:
+            enableAuthzCB.CheckedChanged += checkboxModifyInputs;
+            enableGatewayCB.CheckedChanged += checkboxModifyInputs;
+
             load();
         }
 
@@ -52,8 +57,7 @@ namespace OpenCredential.Plugin.RADIUS
                 return false;
             }
 
-
-            if (enableAuthCB.Checked) //Settings only relevent to users with auth checked
+            if (enableAuthCB.Checked)
             {
                 if (!sendNasIpAddrCB.Checked && !sendNasIdentifierCB.Checked)
                 {
@@ -74,8 +78,20 @@ namespace OpenCredential.Plugin.RADIUS
                 }
             }
 
+            if (enableGatewayCB.Checked && String.IsNullOrEmpty(gatewayLocalGroupTB.Text.Trim()))
+            {
+                MessageBox.Show("Gateway Local Group cannot be blank if the option is enabled.");
+                return false;
+            }
+
             Settings.Store.EnableAuth = enableAuthCB.Checked;
             Settings.Store.EnableAcct = enableAcctCB.Checked;
+
+            // Authorization & Gateway Settings
+            Settings.Store.EnableAuthz = enableAuthzCB.Checked;
+            Settings.Store.AuthzRequireSuccess = authzRequireSuccessCB.Checked;
+            Settings.Store.EnableGateway = enableGatewayCB.Checked;
+            Settings.Store.GatewayLocalGroup = gatewayLocalGroupTB.Text.Trim();
 
             Settings.Store.Server = serverTB.Text.Trim();
             Settings.Store.AuthPort = authport;
@@ -95,7 +111,6 @@ namespace OpenCredential.Plugin.RADIUS
             Settings.Store.ForceInterimUpdates = forceInterimUpdCB.Checked;
             Settings.Store.InterimUpdateTime = interim_time;
                
-
             Settings.Store.AllowSessionTimeout = sessionTimeoutCB.Checked;
             Settings.Store.WisprSessionTerminate = wisprTimeoutCB.Checked;
             
@@ -110,11 +125,17 @@ namespace OpenCredential.Plugin.RADIUS
             enableAuthCB.Checked = (bool)Settings.Store.EnableAuth;
             enableAcctCB.Checked = (bool)Settings.Store.EnableAcct;
 
+            // Authorization & Gateway Settings
+            enableAuthzCB.Checked = (bool)Settings.Store.EnableAuthz;
+            authzRequireSuccessCB.Checked = (bool)Settings.Store.AuthzRequireSuccess;
+            enableGatewayCB.Checked = (bool)Settings.Store.EnableGateway;
+            gatewayLocalGroupTB.Text = Settings.Store.GatewayLocalGroup;
+
             serverTB.Text = Settings.Store.Server;
             authPortTB.Text = String.Format("{0}", (int)Settings.Store.AuthPort);
             acctPortTB.Text = String.Format("{0}", (int)Settings.Store.AcctPort);
             secretTB.Text = Settings.Store.GetEncryptedSetting("SharedSecret") ;
-            timeoutTB.Text = String.Format("{0:0.00}", ((int)Settings.Store.Timeout) / 1000.0 ); //2500ms
+            timeoutTB.Text = String.Format("{0:0.00}", ((int)Settings.Store.Timeout) / 1000.0 );
             retryTB.Text = String.Format("{0}", (int)Settings.Store.Retry);
 
             sendNasIpAddrCB.Checked = (bool)Settings.Store.SendNASIPAddress;
@@ -137,20 +158,24 @@ namespace OpenCredential.Plugin.RADIUS
 
         private void checkboxModifyInputs(object sender, EventArgs e)
         {
-            //Server Settings
+            // Server Settings
             authPortTB.Enabled = enableAuthCB.Checked;
             acctPortTB.Enabled = enableAcctCB.Checked;
             
-            //Authentication options:
+            // Authentication options:
             authGB.Enabled = enableAuthCB.Checked;
             sendNasIdentifierTB.Enabled = sendNasIdentifierCB.Checked;
             sendCalledStationTB.Enabled = sendCalledStationCB.Checked;
 
-            //Accounting options
+            // Accounting options
             acctGB.Enabled = enableAcctCB.Checked;
             forceInterimUpdCB.Enabled = sendInterimUpdatesCB.Checked;
             forceInterimUpdTB.Enabled = forceInterimUpdCB.Enabled;
             forceInterimUpdLbl.Enabled = forceInterimUpdCB.Enabled;
+
+            // Authorization & Gateway options
+            authzRequireSuccessCB.Enabled = enableAuthzCB.Checked;
+            gatewayLocalGroupTB.Enabled = enableGatewayCB.Checked;
         }
 
         private void btnOk_Click(object sender, EventArgs e)
@@ -172,19 +197,8 @@ namespace OpenCredential.Plugin.RADIUS
             secretTB.UseSystemPasswordChar = !showSecretCB.Checked;
         }
 
-
         private void Configuration_Load(object sender, EventArgs e)
         {
-
         }
-
-        //Converts value to int, or returns default value. 
-        /*private int stoi(Object o, int def = 0)
-        {
-            try{ return (int)o; }
-            catch (InvalidCastException) { 
-               
-                return def; }
-        }*/
     }
 }
